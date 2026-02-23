@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Rotunda Console</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Fraunces:wght@300;500;700&family=Spline+Sans:wght@300;500;700&display=swap"
+			rel="stylesheet"
+		/>
+		<link rel="stylesheet" href="ui.css" />
+	</head>
+	<body>
+		<header class="topbar">
+			<div class="brand">Rotunda Console</div>
+			<div class="toolbar">
+				<button id="open-settings" class="ghost">Settings</button>
+			</div>
+		</header>
+
+		<div class="auth-overlay" id="auth-overlay" hidden>
+			<section class="panel auth-card">
+				<h2>Sign in</h2>
+				<div class="status">Login or register to continue.</div>
+				<div class="stack">
+					<input id="auth-uid" type="text" placeholder="uid (leave blank to auto-generate)" />
+					<input id="auth-pwd" type="password" placeholder="pwd" />
+					<div class="auth-actions">
+						<button id="auth-settings" class="ghost">Settings</button>
+						<button id="auth-register" class="ghost">Register</button>
+						<button id="auth-login" class="secondary">Login</button>
+					</div>
+				</div>
+				<div class="status" id="auth-status">-</div>
+			</section>
+		</div>
+
+		<div class="auth-overlay settings-overlay" id="settings-overlay" hidden>
+			<section class="panel auth-card">
+				<div class="modal-header">
+					<h2>Settings</h2>
+					<button id="close-settings" class="ghost">Close</button>
+				</div>
+				<div class="stack">
+					<div class="status">Base URL</div>
+					<input id="base-url" type="text" placeholder="http://localhost:8888" />
+					<div class="auth-actions">
+						<button id="use-window-base" class="ghost">Use Window Base</button>
+						<button id="save-base" class="secondary">Set Base</button>
+					</div>
+				</div>
+				<div class="stack">
+					<div class="status">Join Room</div>
+					<input id="join-invite" type="text" placeholder="invite token" />
+					<div class="auth-actions">
+						<button id="join-room" class="ghost">Join</button>
+					</div>
+				</div>
+				<div class="stack">
+					<div class="status">Session</div>
+					<input id="uid" type="text" placeholder="uid" readonly />
+					<input id="token" type="text" placeholder="token" readonly />
+					<div class="auth-actions">
+						<button id="logout" class="ghost">Logout</button>
+					</div>
+				</div>
+				<div class="status" id="settings-status">-</div>
+			</section>
+		</div>
+
+		<main class="layout">
+			<section class="panel">
+				<h2>Rooms</h2>
+				<div class="status">Drag rooms into the Agent panel to add context.</div>
+				<div class="rooms-list" id="rooms-list"></div>
+				<div class="stack">
+					<input id="room-name" type="text" placeholder="room name" />
+					<input id="room-visibility" type="text" placeholder="visibility (optional)" />
+					<div class="stack">
+						<button id="create-room">Create Room</button>
+						<button id="refresh-rooms" class="ghost">Refresh Rooms</button>
+					</div>
+				</div>
+			</section>
+
+			<section class="panel">
+				<h2>Room Messages</h2>
+				<div class="row">
+					<div class="status" id="active-room-label">No room selected</div>
+					<button id="invite-room" class="ghost">Invite</button>
+				</div>
+				<div class="invite-box" id="invite-box" hidden>
+					<input id="invite-token" type="text" placeholder="invite token" readonly />
+					<button id="copy-invite" class="ghost">Copy</button>
+				</div>
+				<div class="history-list" id="history-list"></div>
+				<h2>Send To Room</h2>
+				<div class="stack">
+					<input id="room-msg" type="text" placeholder="message" />
+					<button id="send-room">Send to Room</button>
+				</div>
+			</section>
+
+			<section class="panel">
+				<h2>Agent</h2>
+				<div class="stack">
+					<div class="drop-zone compact" id="agent-drop-zone">Drop rooms here to add context</div>
+					<div class="context-bar" id="selected-rooms"></div>
+					<div class="row">
+						<div class="status">Rulebook</div>
+						<select id="rulebook-id">
+							<option value="hipaa">hipaa</option>
+							<option value="gdpr">gdpr</option>
+							<option value="custom">custom</option>
+						</select>
+					</div>
+					<textarea
+						id="rulebook-text"
+						placeholder="Paste a custom rulebook here (used by compliance filters)"
+						hidden
+					></textarea>
+					<details class="tool-calls-panel" id="tool-calls-panel">
+						<summary>Live Tool Calls</summary>
+						<div class="status" id="tool-calls-status">disconnected</div>
+						<div class="tool-calls-list" id="tool-calls-list"></div>
+					</details>
+					<div class="agent-thread" id="agent-thread"></div>
+					<textarea id="agent-msg" placeholder="ask the agent"></textarea>
+					<button id="send-agent">Ask Agent</button>
+				</div>
+				<div class="status" id="status">ready</div>
+			</section>
+		</main>
+
+		<script src="ui.js"></script>
+	</body>
+</html>

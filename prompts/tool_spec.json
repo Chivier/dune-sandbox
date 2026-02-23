@@ -1,0 +1,823 @@
+[
+  {
+    "name": "GET {api_base}/metadata",
+    "description": "CapabilityStatement",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "GET {api_base}/{resourceType}",
+    "description": "Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "searchParams": {
+          "type": "array",
+          "description": "name=value pairs",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "resourceType"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/{resourceType}/_search",
+    "description": "Search (POST form)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "formBody": {
+          "type": "string",
+          "description": "x-www-form-urlencoded"
+        }
+      },
+      "required": [
+        "resourceType",
+        "formBody"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/{resourceType}/{id}",
+    "description": "Read by id",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource id"
+        }
+      },
+      "required": [
+        "resourceType",
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/{resourceType}/{id}/_history/{vid}",
+    "description": "Versioned read",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource id"
+        },
+        "vid": {
+          "type": "string",
+          "description": "Version id"
+        }
+      },
+      "required": [
+        "resourceType",
+        "id",
+        "vid"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/{resourceType}",
+    "description": "Create resource",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "resource": {
+          "type": "object",
+          "description": "FHIR resource JSON"
+        },
+        "ifNoneExist": {
+          "type": "string",
+          "description": "Conditional create"
+        }
+      },
+      "required": [
+        "resourceType",
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "PUT {api_base}/{resourceType}/{id}",
+    "description": "Update/replace resource",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource id"
+        },
+        "resource": {
+          "type": "object",
+          "description": "FHIR resource JSON"
+        },
+        "ifMatch": {
+          "type": "string",
+          "description": "ETag"
+        }
+      },
+      "required": [
+        "resourceType",
+        "id",
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "PATCH {api_base}/{resourceType}/{id}",
+    "description": "Patch resource",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource id"
+        },
+        "patch": {
+          "type": [
+            "array",
+            "object"
+          ],
+          "description": "JSON Patch or FHIR Patch"
+        }
+      },
+      "required": [
+        "resourceType",
+        "id",
+        "patch"
+      ]
+    }
+  },
+  {
+    "name": "DELETE {api_base}/{resourceType}/{id}",
+    "description": "Delete resource",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource id"
+        },
+        "conditional": {
+          "type": "string",
+          "description": "Conditional delete"
+        }
+      },
+      "required": [
+        "resourceType",
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/{resourceType}/{id}/_history",
+    "description": "Instance history",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource id"
+        }
+      },
+      "required": [
+        "resourceType",
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/{resourceType}/_history",
+    "description": "Type history",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        }
+      },
+      "required": [
+        "resourceType"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/_history",
+    "description": "System history",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "POST {api_base}/$operationName",
+    "description": "System operation ($)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "operationName": {
+          "type": "string",
+          "description": "Name without '$'"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "FHIR Parameters resource"
+        }
+      },
+      "required": [
+        "operationName"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/{resourceType}/$operationName",
+    "description": "Type operation ($)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "operationName": {
+          "type": "string",
+          "description": "Name without '$'"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "FHIR Parameters resource"
+        }
+      },
+      "required": [
+        "resourceType",
+        "operationName"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/{resourceType}/{id}/$operationName",
+    "description": "Instance operation ($)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resourceType": {
+          "type": "string",
+          "description": "FHIR resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource id"
+        },
+        "operationName": {
+          "type": "string",
+          "description": "Name without '$'"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "FHIR Parameters resource"
+        }
+      },
+      "required": [
+        "resourceType",
+        "id",
+        "operationName"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base} (transaction)",
+    "description": "Transaction bundle",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "bundle": {
+          "type": "object",
+          "description": "Bundle type=transaction"
+        }
+      },
+      "required": [
+        "bundle"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base} (batch)",
+    "description": "Batch bundle",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "bundle": {
+          "type": "object",
+          "description": "Bundle type=batch"
+        }
+      },
+      "required": [
+        "bundle"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/Patient",
+    "description": "Patient.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "Patient identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Any part of name"
+        },
+        "given": {
+          "type": "string",
+          "description": "Given name"
+        },
+        "family": {
+          "type": "string",
+          "description": "Family name"
+        },
+        "birthdate": {
+          "type": "string",
+          "description": "YYYY-MM-DD"
+        },
+        "gender": {
+          "type": "string",
+          "description": "Administrative gender"
+        },
+        "legal-sex": {
+          "type": "string",
+          "description": "Legal sex"
+        },
+        "address": {
+          "type": "string",
+          "description": "Street address"
+        },
+        "address-city": {
+          "type": "string",
+          "description": "City"
+        },
+        "address-state": {
+          "type": "string",
+          "description": "State"
+        },
+        "address-postalcode": {
+          "type": "string",
+          "description": "Postal code"
+        },
+        "telecom": {
+          "type": "string",
+          "description": "Phone or email"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "GET {api_base}/Condition",
+    "description": "Condition.Search (Problems)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        },
+        "category": {
+          "type": "string",
+          "description": "problem-list-item"
+        },
+        "status": {
+          "type": "string",
+          "description": "clinical status"
+        }
+      },
+      "required": [
+        "patient"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/Condition",
+    "description": "Condition.Create",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "object",
+          "description": "Condition JSON"
+        }
+      },
+      "required": [
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/Observation",
+    "description": "Observation.Search (Labs)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        },
+        "code": {
+          "type": "string",
+          "description": "LOINC or local code"
+        },
+        "date": {
+          "type": "string",
+          "description": "date or range"
+        }
+      },
+      "required": [
+        "patient",
+        "code"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/Observation",
+    "description": "Observation.Search (Vitals)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        },
+        "category": {
+          "type": "string",
+          "description": "vital-signs"
+        },
+        "date": {
+          "type": "string",
+          "description": "date or range"
+        }
+      },
+      "required": [
+        "patient",
+        "category"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/Observation",
+    "description": "Observation.Create (Vitals)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "object",
+          "description": "Observation JSON; required: resourceType, status, category, code, effectiveDateTime, subject, valueString"
+        }
+      },
+      "required": [
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/MedicationRequest",
+    "description": "MedicationRequest.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        },
+        "category": {
+          "type": "string",
+          "description": "Inpatient | Outpatient | Community | Discharge"
+        },
+        "date": {
+          "type": "string",
+          "description": "date or range"
+        }
+      },
+      "required": [
+        "patient"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/MedicationRequest",
+    "description": "MedicationRequest.Create",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "object",
+          "description": "MedicationRequest JSON; required: resourceType, medicationCodeableConcept, authoredOn, dosageInstruction, status, intent, subject"
+        }
+      },
+      "required": [
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/MedicationStatement",
+    "description": "MedicationStatement.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        },
+        "status": {
+          "type": "string",
+          "description": "status"
+        }
+      },
+      "required": [
+        "patient"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/Procedure",
+    "description": "Procedure.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        },
+        "date": {
+          "type": "string",
+          "description": "date or range"
+        },
+        "code": {
+          "type": "string",
+          "description": "CPT or local code"
+        }
+      },
+      "required": [
+        "patient",
+        "date"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/ServiceRequest",
+    "description": "ServiceRequest.Create",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "object",
+          "description": "ServiceRequest JSON; required: resourceType, code, authoredOn, status, intent, priority, subject; optional: occurrenceDateTime, note"
+        }
+      },
+      "required": [
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/AllergyIntolerance",
+    "description": "AllergyIntolerance.Create",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "object",
+          "description": "AllergyIntolerance JSON"
+        }
+      },
+      "required": [
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "POST {api_base}/Immunization",
+    "description": "Immunization.Create",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "object",
+          "description": "Immunization JSON"
+        }
+      },
+      "required": [
+        "resource"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/DiagnosticReport",
+    "description": "DiagnosticReport.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        },
+        "code": {
+          "type": "string",
+          "description": "LOINC or local code"
+        },
+        "date": {
+          "type": "string",
+          "description": "date or range"
+        }
+      },
+      "required": [
+        "patient"
+      ]      
+    }
+  },
+  {
+    "name": "GET {api_base}/DocumentReference",
+    "description": "DocumentReference.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        },
+        "type": {
+          "type": "string",
+          "description": "document type"
+        },
+        "date": {
+          "type": "string",
+          "description": "date or range"
+        }
+      },
+      "required": [
+        "patient"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/Composition",
+    "description": "Composition.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "composition type"
+        },
+        "date": {
+          "type": "string",
+          "description": "date or range"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "GET {api_base}/CarePlan",
+    "description": "CarePlan.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        }
+      },
+      "required": [
+        "patient"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/Goal",
+    "description": "Goal.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        }
+      },
+      "required": [
+        "patient"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/Coverage",
+    "description": "Coverage.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        }
+      },
+      "required": [
+        "patient"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/Claim",
+    "description": "Claim.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        }
+      },
+      "required": [
+        "patient"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/ExplanationOfBenefit",
+    "description": "ExplanationOfBenefit.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patient": {
+          "type": "string",
+          "description": "Patient/<id>"
+        }
+      },
+      "required": [
+        "patient"
+      ]
+    }
+  },
+  {
+    "name": "GET {api_base}/Provenance",
+    "description": "Provenance.Search",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Resource reference"
+        }
+      },
+      "required": [
+        "target"
+      ]
+    }
+  }
+]

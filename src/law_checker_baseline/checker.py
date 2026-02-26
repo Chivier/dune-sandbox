@@ -1,9 +1,23 @@
 #!/usr/bin/env python3
 """
-law_checker_baseline — Baseline sandbox compliance checker using LLaMA-70B via sglang.
+law_checker_baseline — Baseline sandbox compliance checker.
+
+This script can run in two modes:
+  - OpenAI API (default): use GPT-5.2 (or another OpenAI model) over the network.
+  - Local sglang: start a local model server and query it via the OpenAI-compatible API.
+
+Examples:
+  # OpenAI (GPT-5.2)
+  OPENAI_API_KEY=... python src/law_checker_baseline/checker.py
+
+  # OpenAI (custom model)
+  OPENAI_API_KEY=... python src/law_checker_baseline/checker.py --model gpt-5.2-mini
+
+  # Local sglang (keeps previous behavior)
+  python src/law_checker_baseline/checker.py --backend sglang --device 3 --port 30000
 
 Steps:
-  1. Start sglang 70b model server on GPU device=3 (1 replica, port 30000)
+  1. (sglang only) Start sglang model server (1 replica)
   2. Split law JSONL into N token-budget parts (each fits within context window)
   3. For each request in req.jsonl:
        - Strip "policy" from metadata
@@ -19,6 +33,8 @@ Steps:
 
 import argparse
 import json
+import os
+import re
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -32,6 +48,14 @@ SCRIPTS_DIR  = PROJECT_DIR / "scripts"
 RESULTS_DIR  = PROJECT_DIR / "experiments" / "law_checker_baseline"
 DEFAULT_LAW  = PROJECT_DIR / "datasets" / "law" / "HIPAA.jsonl"
 DEFAULT_REQ  = PROJECT_DIR / "datasets" / "req" / "req.jsonl"
+DEFAULT_OPENAI_MODEL = "gpt-5.2"
+
+
+# ── misc helpers ──────────────────────────────────────────────────────────────
+
+def safe_tag(value: str) -> str:
+    """Make a string safe to embed in filenames/run-ids."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("_")
 
 
 # ── sglang lifecycle ──────────────────────────────────────────────────────────
@@ -114,7 +138,7 @@ def extract_policy_type(policy: str) -> str:
 
 # ── LLM query ─────────────────────────────────────────────────────────────────
 
-def query_part(client: OpenAI, model: str, law_part: str, req_json: str) -> dict:
+def query_part(client: OpenAI, model: str, law_part: str, req_json: str, api: str) -> dict:
     """Query the LLM for one law part. Returns dict with result + metrics."""
     prompt = (
         f"Check if this user obey all laws in:\n{law_part}\n\n"
@@ -122,21 +146,34 @@ def query_part(client: OpenAI, model: str, law_part: str, req_json: str) -> dict
         f"Only return true/false."
     )
     t0 = time.perf_counter()
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        max_tokens=10,
-    )
+    if api == "responses":
+        response = client.responses.create(
+            model=model,
+            input=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            # OpenAI Responses API enforces a minimum (currently 16).
+            max_output_tokens=16,
+        )
+        raw_text = (response.output_text or "").strip()
+        input_tokens  = response.usage.input_tokens  if response.usage else None
+        output_tokens = response.usage.output_tokens if response.usage else None
+    else:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_tokens=10,
+        )
+        raw_text = (response.choices[0].message.content or "").strip()
+        input_tokens  = response.usage.prompt_tokens     if response.usage else None
+        output_tokens = response.usage.completion_tokens if response.usage else None
     elapsed = time.perf_counter() - t0
 
-    answer       = response.choices[0].message.content.strip().lower()
-    input_tokens  = response.usage.prompt_tokens     if response.usage else None
-    output_tokens = response.usage.completion_tokens if response.usage else None
+    answer = raw_text.lower()
 
     return {
         "compliant":      answer.startswith("true"),
-        "raw_answer":     response.choices[0].message.content.strip(),
+        "raw_answer":     raw_text,
         "input_tokens":   input_tokens,
         "output_tokens":  output_tokens,
         "time_s":         round(elapsed, 3),
@@ -155,32 +192,78 @@ def calc_score(llm_result: bool, policy_type: str) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Law checker baseline")
-    parser.add_argument("--device",   default="3",              help="GPU device id (default: 3)")
-    parser.add_argument("--port",     type=int, default=30000,  help="sglang server port (default: 30000)")
+    parser.add_argument("--backend",  choices=("openai", "sglang"), default="openai",
+                        help="Which backend to use: openai (default) or sglang (local server)")
+    parser.add_argument("--model",    default=None,
+                        help=f"Model name. Default: {DEFAULT_OPENAI_MODEL} for openai; auto-detected for sglang.")
+    parser.add_argument("--api",      choices=("responses", "chat"), default=None,
+                        help="Which OpenAI-style API to use. Default: responses for openai, chat for sglang.")
+    parser.add_argument("--api-key",  default=None,
+                        help="API key for the OpenAI client. Defaults to OPENAI_API_KEY for openai; dummy for sglang.")
+    parser.add_argument("--base-url", default=None,
+                        help="Override base URL for OpenAI-compatible endpoints. "
+                             "For sglang default is http://localhost:<port>/v1.")
+    parser.add_argument("--device",   default="3",
+                        help="GPU device id (sglang only; default: 3)")
+    parser.add_argument("--port",     type=int, default=30000,
+                        help="sglang server port (sglang only; default: 30000)")
     parser.add_argument("--law",      default=str(DEFAULT_LAW), help="Law JSONL file")
     parser.add_argument("--req",      default=str(DEFAULT_REQ), help="Request JSONL file")
     parser.add_argument("--max-req",  type=int, default=None,   help="Max number of requests to process")
-    parser.add_argument("--no-start", action="store_true",      help="Skip starting sglang")
-    parser.add_argument("--no-stop",  action="store_true",      help="Skip stopping sglang")
+    parser.add_argument("--no-start", action="store_true",      help="Skip starting sglang (sglang only)")
+    parser.add_argument("--no-stop",  action="store_true",      help="Skip stopping sglang (sglang only)")
     args = parser.parse_args()
 
-    # 1. Start sglang
-    if not args.no_start:
+    backend = args.backend
+    api = args.api or ("responses" if backend == "openai" else "chat")
+    if backend == "sglang" and api == "responses":
+        raise SystemExit("sglang backend does not support the Responses API. Use --api chat (default).")
+
+    # 1. Start sglang (optional)
+    if backend == "sglang" and not args.no_start:
         start_sglang(args.device, args.port)
 
     run_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     law_tag = Path(args.law).stem  # e.g. "HIPAA" or "GDPR"
-    run_id  = f"{run_ts}_{law_tag}_gpu{args.device}"
 
     try:
-        # Resolve model name from running server
-        resp = httpx.get(f"http://localhost:{args.port}/v1/models", timeout=10)
-        resp.raise_for_status()
-        model_id = resp.json()["data"][0]["id"]
-        print(f"[info] Model:  {model_id}")
-        print(f"[info] Run ID: {run_id}")
+        # Resolve model + client
+        if backend == "sglang":
+            base_url = args.base_url or f"http://localhost:{args.port}/v1"
+            client = OpenAI(base_url=base_url, api_key=args.api_key or "dummy")
 
-        client = OpenAI(base_url=f"http://localhost:{args.port}/v1", api_key="dummy")
+            if args.model:
+                model_id = args.model
+            else:
+                # Resolve model name from running server
+                resp = httpx.get(f"{base_url.rstrip('/')}/models", timeout=10)
+                resp.raise_for_status()
+                model_id = resp.json()["data"][0]["id"]
+        else:
+            if not args.api_key and not os.getenv("OPENAI_API_KEY"):
+                raise SystemExit(
+                    "OPENAI_API_KEY is not set. Set it in your environment or pass --api-key."
+                )
+
+            client_kwargs: dict = {}
+            if args.base_url:
+                client_kwargs["base_url"] = args.base_url
+            if args.api_key:
+                client_kwargs["api_key"] = args.api_key
+            client = OpenAI(**client_kwargs)
+            model_id = args.model or DEFAULT_OPENAI_MODEL
+
+        resolved_base_url = str(client.base_url)
+        run_id = (
+            f"{run_ts}_{law_tag}_gpu{safe_tag(args.device)}"
+            if backend == "sglang"
+            else f"{run_ts}_{law_tag}_{safe_tag(model_id)}"
+        )
+
+        print(f"[info] Backend: {backend} (api={api})")
+        print(f"[info] Base URL: {resolved_base_url}")
+        print(f"[info] Model:   {model_id}")
+        print(f"[info] Run ID:  {run_id}")
 
         # 2. Load & split laws
         laws  = load_jsonl(Path(args.law))
@@ -230,7 +313,7 @@ def main() -> None:
                 req_time     = 0.0
 
                 for p_idx, part_text in enumerate(parts):
-                    qr = query_part(client, model_id, part_text, req_json)
+                    qr = query_part(client, model_id, part_text, req_json, api=api)
                     part_results.append(qr)
                     req_in_tok  += qr["input_tokens"]  or 0
                     req_out_tok += qr["output_tokens"] or 0
@@ -302,7 +385,10 @@ def main() -> None:
         summary_path = RESULTS_DIR / f"{run_id}_summary.json"
         summary_path.write_text(json.dumps({
             "run_id":         run_id,
+            "backend":        backend,
+            "api":            api,
             "model":          model_id,
+            "base_url":       resolved_base_url,
             "law_file":       str(args.law),
             "req_file":       str(args.req),
             "max_req":        args.max_req,
@@ -319,7 +405,7 @@ def main() -> None:
 
     finally:
         # 6. Stop sglang
-        if not args.no_stop:
+        if backend == "sglang" and not args.no_stop:
             stop_sglang(args.port)
 
 

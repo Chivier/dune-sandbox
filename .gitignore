@@ -5,3 +5,5 @@ experiments/*
 *.pyc
 venv/
 log/
+.venv/
+.vscode/

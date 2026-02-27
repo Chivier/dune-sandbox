@@ -8,7 +8,11 @@ import tornado.web
 import tornado.websocket
 import util
 
-util.parsed_args.filter = "context"
+# Select compliance filter at runtime.
+# - Default keeps previous behavior ("context" local sglang filter).
+# - Override via environment variable:
+#     ROTUNDA_FILTER=compiled_law python src/back_end/rotunda.py
+util.parsed_args.filter = (os.getenv("ROTUNDA_FILTER") or "context").strip().lower()
 
 # room_id -> room_chat_history
 Database = {}

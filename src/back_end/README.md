@@ -123,6 +123,31 @@ Open the UI:
 
 - `http://localhost:8888/ui/`
 
+## Compliance Filters
+
+Rotunda supports multiple compliance filters (see `src/back_end/filters/`), selected at runtime via:
+
+```bash
+ROTUNDA_FILTER=context        # default (local LLM on localhost)
+ROTUNDA_FILTER=strict         # local LLM, stricter prompt
+ROTUNDA_FILTER=trivial        # allow all tool calls
+ROTUNDA_FILTER=compiled_law   # GPT-5.2 + dune-sandbox compiled laws
+```
+
+For the `compiled_law` filter you must also provide an API key, and optionally a model:
+
+```bash
+export OPENAI_API_KEY=...
+export LAW_FILTER_MODEL=gpt-5.2     # default
+export LAW_FILTER_MAX_CHARS_PER_CHUNK=8000
+```
+
+Example:
+
+```bash
+OPENAI_API_KEY=... ROTUNDA_FILTER=compiled_law python back_end/rotunda.py --LLM_port 30000 --FHIR_port 9090
+```
+
 ## Minimal API Smoke Test (Optional)
 
 Register + login:
@@ -154,4 +179,3 @@ curl -sS -X POST "http://localhost:8888/room/create" \
 - UI loads but API calls fail:
   - check the UI "Base URL" field (defaults to `http://localhost:8888`)
   - confirm the backend is running and reachable on that port
-

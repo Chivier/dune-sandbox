@@ -19,6 +19,7 @@ import requests
 from filters.trivial_filter import trivial_filter
 from filters.context_filter import context_filter
 from filters.strict_filter import strict_filter
+from filters.compiled_law_filter import compiled_law_filter
 import time
 import json
 from tqdm import tqdm
@@ -34,7 +35,7 @@ class parsed_args:
     mode: str = "read"  # read or interactive
     file: str = "datasets/200_list.txt"  # input file for read mode
     out: str = "out/output.json"  # output file for read mode
-    filter: str = "trivial"  # filter type: trivial, context, strict
+    filter: str = "trivial"  # filter type: trivial, context, strict, compiled_law
     quick: bool = False  # quick mode for testing
     model: str = None  # model name, if None, use local model
 
@@ -215,6 +216,9 @@ def tool_calling(
         result, minilog = context_filter(rulebook, history, http_req)
     elif parsed_args.filter == 'strict':
         result, minilog = strict_filter(rulebook, history, http_req)
+    elif parsed_args.filter in ('compiled_law', 'compiled', 'pipelined'):
+        # "pipelined" alias because it mirrors src/law_checker_pipelined.
+        result, minilog = compiled_law_filter(rulebook, history, http_req)
     else:
         raise ValueError("Invalid filter type specified.")
     if timeline is not None:

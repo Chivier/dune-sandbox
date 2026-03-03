@@ -2,6 +2,7 @@ import os
 import json
 import datetime
 import secrets
+import sys
 import tornado
 import tornado.ioloop
 import tornado.web
@@ -27,6 +28,7 @@ message_counter = 0
 room_streams = {}
 # uid -> set(WebSocketHandler) for live agent tool-call trace updates
 agent_streams = {}
+OPENAI_RETRY_INTERVAL_MS = 10_000
 
 def now_iso():
     return datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
@@ -112,6 +114,97 @@ def make_invite(uid, room_id):
         invite_token = f"inv_{secrets.token_urlsafe(24)}"
         if invite_token not in invites:
             return invite_token
+
+class OpenAI_probe_monitor:
+    """
+    Check OpenAI connectivity when Rotunda starts; if unavailable, keep
+    probing every 10 seconds until it is detected.
+    """
+    def __init__(self):
+        self.interval_ms = OPENAI_RETRY_INTERVAL_MS
+        self._callback = tornado.ioloop.PeriodicCallback(self._periodic_check, self.interval_ms)
+        self._running = False
+        self._status_active = False
+        self._last_status_width = 0
+
+    def _print_progress(self, message):
+        width = len(message)
+        if width < self._last_status_width:
+            message = message + (" " * (self._last_status_width - width))
+        sys.stdout.write("\r" + message)
+        sys.stdout.flush()
+        self._status_active = True
+        self._last_status_width = max(self._last_status_width, width)
+
+    def _clear_progress(self):
+        if not self._status_active:
+            return
+        sys.stdout.write("\r" + (" " * self._last_status_width) + "\r")
+        sys.stdout.flush()
+        self._status_active = False
+        self._last_status_width = 0
+
+    def _print_event(self, message):
+        self._clear_progress()
+        print(message)
+
+    def _format_models(self, model_ids):
+        if not model_ids:
+            return "none returned"
+        preview = ", ".join(model_ids[:3])
+        if len(model_ids) > 3:
+            return f"{preview}, ..."
+        return preview
+
+    def _retry_message(self, probe, status):
+        probe_error = probe.get("error", "unknown error")
+        if status.get("alive"):
+            return (
+                "[rotunda] OpenAI client unavailable "
+                f"({probe_error}); server alive at {status.get('url')} "
+                f"(HTTP {status.get('status_code')}); retrying in 10s..."
+            )
+        checked = ", ".join(status.get("checked", [])) or "no endpoints"
+        return (
+            "[rotunda] OpenAI client unavailable "
+            f"({probe_error}); server not reachable ({checked}); retrying in 10s..."
+        )
+
+    def start(self):
+        probe = util.probe_openai_client()
+        if probe.get("ok"):
+            models = self._format_models(probe.get("models", []))
+            self._print_event(
+                f"[rotunda] OpenAI client detected at {probe.get('base_url')} "
+                f"(models: {models})."
+            )
+            return
+
+        status = util.probe_openai_server_alive()
+        self._print_progress(self._retry_message(probe, status))
+        self._callback.start()
+        self._running = True
+
+    async def _periodic_check(self):
+        loop = tornado.ioloop.IOLoop.current()
+        probe = await loop.run_in_executor(None, util.probe_openai_client)
+        if probe.get("ok"):
+            models = self._format_models(probe.get("models", []))
+            self._print_event(
+                f"[rotunda] OpenAI client detected at {probe.get('base_url')} "
+                f"(models: {models})."
+            )
+            self.stop()
+            return
+
+        status = await loop.run_in_executor(None, util.probe_openai_server_alive)
+        self._print_progress(self._retry_message(probe, status))
+
+    def stop(self):
+        if self._running:
+            self._callback.stop()
+            self._running = False
+        self._clear_progress()
 
 class Basic_handler(tornado.web.RequestHandler):
     def get(self):
@@ -396,4 +489,6 @@ if __name__ == "__main__":
     app = make_app()
     app.listen(PORT)
     print(f"Tornado server started on http://localhost:{PORT}")
+    openai_probe_monitor = OpenAI_probe_monitor()
+    openai_probe_monitor.start()
     tornado.ioloop.IOLoop.current().start()

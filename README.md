@@ -17,7 +17,7 @@ If you run into DeBERTa import errors on Linux:
 
 ## Scripts
 
-Three scripts are provided in `scripts/`. All use the same underlying `sglang.sh` and store PID files in `/tmp/sglang_pids/`. Logs go to `/tmp/sglang_<port>.log`.
+Scripts are provided in `scripts/`. `sglang` scripts store PID files in `/tmp/sglang_pids/` and logs in `/tmp/sglang_<port>.log`. The `vllm` script stores PIDs in `/tmp/vllm_pids/` and logs in `/tmp/vllm_<port>.log`.
 
 ---
 
@@ -65,6 +65,35 @@ Start and stop any HuggingFace model.
 Extra args are forwarded verbatim to `sglang.launch_server`.
 
 **Attention backend:** All instances use `--attention-backend triton --sampling-backend pytorch --disable-cuda-graph` to avoid flashinfer JIT compilation (which requires CUDA headers not present on this system).
+
+---
+
+### `scripts/vllm.sh` — general-purpose vLLM launcher
+
+Start and stop any HuggingFace model on vLLM with the same device/port mapping behavior as `sglang.sh`.
+
+```bash
+# 1 instance, TP=4
+./scripts/vllm.sh start --model meta-llama/Llama-3.1-70B-Instruct \
+    --device 0,1,2,3 --port 30000
+
+# 4 instances, TP=1
+./scripts/vllm.sh start --model meta-llama/Llama-3.1-8B-Instruct \
+    --device 0,1,2,3 --port 30000,30001,30002,30003
+
+# stop specific ports
+./scripts/vllm.sh stop --model meta-llama/Llama-3.1-8B-Instruct --port 30000,30001
+
+# stop everything started with vllm.sh
+./scripts/vllm.sh stop --all
+```
+
+Extra args are forwarded to `vllm.entrypoints.openai.api_server`, e.g.:
+
+```bash
+./scripts/vllm.sh start --model meta-llama/Llama-3.1-8B-Instruct \
+  --device 0 --port 30000 --dtype bfloat16 --max-model-len 8192
+```
 
 ---
 

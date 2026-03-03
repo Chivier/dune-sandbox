@@ -37,6 +37,15 @@ Options:
              Default: CUDA_VISIBLE_DEVICES or "0"
   --port     Comma-separated ports. Count determines number of instances.
              Default: 30000
+  --mem-fraction-static <f>
+             Forwarded to sglang.
+             If omitted in embedding mode, this script auto-calculates a value
+             per instance from live GPU free memory (nvidia-smi) and remaining
+             launches per GPU.
+             Optional tuning env vars:
+               SGLANG_AUTO_MEM_HEADROOM_MB (default: 2048)
+               SGLANG_AUTO_MEM_MIN_FRACTION (default: 0.05)
+               SGLANG_AUTO_MEM_MAX_FRACTION (default: 0.85)
   --no-embedding  Skip --is-embedding flags (use for generative models)
   --all      (stop only) Stop every running sglang server
   Extra args are forwarded verbatim to sglang.launch_server.
@@ -57,10 +66,10 @@ model_to_pid_file() {
 }
 
 # Launch one server instance
-# Args: model  cuda_devs  tp_size  port  embedding  [extra...]
+# Args: model  cuda_devs  tp_size  port  embedding  mem_fraction  [extra...]
 start_one() {
-    local model="$1" cuda_devs="$2" tp_size="$3" port="$4" embedding="$5"
-    shift 5
+    local model="$1" cuda_devs="$2" tp_size="$3" port="$4" embedding="$5" mem_fraction="$6"
+    shift 6
     local extra_args=("$@")
 
     mkdir -p "$PID_DIR"
@@ -84,16 +93,26 @@ start_one() {
     local base_flags=(--attention-backend triton --sampling-backend pytorch --disable-cuda-graph)
     local embed_flags=()
     if [[ "$embedding" == "true" ]]; then
-        embed_flags=(--is-embedding "${base_flags[@]}" --context-length 512 --mem-fraction-static 0.1)
+        embed_flags=(--is-embedding "${base_flags[@]}" --context-length 512)
+        if [[ -n "$mem_fraction" ]]; then
+            embed_flags+=(--mem-fraction-static "$mem_fraction")
+        fi
     else
         embed_flags=("${base_flags[@]}")
     fi
 
-    CUDA_VISIBLE_DEVICES="$cuda_devs" \
-    CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}" \
-    PYTHONPATH="$PLUGINS_DIR${PYTHONPATH:+:$PYTHONPATH}" \
-    SGLANG_EXTERNAL_MODEL_PACKAGE="deberta_plugin" \
-        "$VENV_PYTHON" -m sglang.launch_server \
+    local env_cmd=(env
+        "CUDA_VISIBLE_DEVICES=$cuda_devs"
+        "CUDA_HOME=${CUDA_HOME:-/usr/local/cuda}"
+    )
+    if [[ -d "$PLUGINS_DIR/deberta_plugin" ]]; then
+        env_cmd+=(
+            "PYTHONPATH=$PLUGINS_DIR${PYTHONPATH:+:$PYTHONPATH}"
+            "SGLANG_EXTERNAL_MODEL_PACKAGE=deberta_plugin"
+        )
+    fi
+
+    "${env_cmd[@]}" "$VENV_PYTHON" -m sglang.launch_server \
             --model-path "$model" \
             --port "$port" \
             --host 0.0.0.0 \
@@ -109,6 +128,7 @@ cmd_start() {
     local model="" raw_devices="${CUDA_VISIBLE_DEVICES:-0}" raw_ports="30000"
     local embedding="true"
     local extra_args=()
+    local has_mem_fraction_arg=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -120,7 +140,22 @@ cmd_start() {
         esac
     done
 
+    for arg in "${extra_args[@]+"${extra_args[@]}"}"; do
+        case "$arg" in
+            --mem-fraction-static|--mem-fraction-static=*)
+                has_mem_fraction_arg=true
+                break
+                ;;
+        esac
+    done
+
     [[ -z "$model" ]] && { echo "Error: --model is required"; usage; exit 1; }
+    if [[ "$model" == "meta-llama/Prompt-Guard-86M" && ! -d "$PLUGINS_DIR/deberta_plugin" ]]; then
+        echo "Error: $model requires sglang plugin directory:"
+        echo "       $PLUGINS_DIR/deberta_plugin"
+        echo "       Install/create that plugin first, or use a model that does not require it."
+        exit 1
+    fi
 
     IFS=',' read -ra all_devices <<< "$raw_devices"
     IFS=',' read -ra ports       <<< "$raw_ports"
@@ -133,28 +168,122 @@ cmd_start() {
         exit 1
     fi
     local tp_size=$(( n_devices / n_instances ))
+    local auto_mem_headroom_mb="${SGLANG_AUTO_MEM_HEADROOM_MB:-2048}"
+    local auto_mem_min_fraction="${SGLANG_AUTO_MEM_MIN_FRACTION:-0.05}"
+    local auto_mem_max_fraction="${SGLANG_AUTO_MEM_MAX_FRACTION:-0.85}"
 
     echo "Starting $n_instances sglang instance(s) for model: $model  (tp_size=$tp_size)"
+    if [[ "$embedding" == "true" ]] && ! $has_mem_fraction_arg; then
+        echo "Embedding mode: auto mem fraction enabled (headroom=${auto_mem_headroom_mb}MiB, min=${auto_mem_min_fraction}, max=${auto_mem_max_fraction})"
+    fi
 
-    # Detect whether multiple instances share a GPU → launch sequentially to avoid
-    # memory races (each sglang process profiles free VRAM at startup; concurrent
-    # launches cause over-allocation and OOM).
-    local unique_devs
-    unique_devs="$(printf '%s\n' "${all_devices[@]}" | sort -u | wc -l)"
+    local -a instance_cuda_devs=()
+    declare -A remaining_uses=()
+    for (( i=0; i<n_instances; i++ )); do
+        local cuda_group
+        cuda_group="$(IFS=','; echo "${all_devices[*]:$(( i * tp_size )):$tp_size}")"
+        instance_cuda_devs+=("$cuda_group")
+        IFS=',' read -ra group_devs <<< "$cuda_group"
+        for dev in "${group_devs[@]}"; do
+            remaining_uses["$dev"]=$(( ${remaining_uses["$dev"]:-0} + 1 ))
+        done
+    done
+
+    # If any GPU is used by more than one instance, launch sequentially to avoid
+    # startup memory races and over-allocation.
     local sequential=false
-    (( n_instances > unique_devs )) && sequential=true
+    for dev in "${!remaining_uses[@]}"; do
+        if (( ${remaining_uses["$dev"]} > 1 )); then
+            sequential=true
+            break
+        fi
+    done
 
     local pids=()
     local timeout_per=180
+    local can_auto_mem=true
+    local auto_mem_warning_emitted=false
+    if [[ "$embedding" == "true" ]] && ! $has_mem_fraction_arg; then
+        if ! command -v nvidia-smi >/dev/null 2>&1; then
+            can_auto_mem=false
+            echo "Warning: nvidia-smi not found; auto mem fraction disabled."
+            auto_mem_warning_emitted=true
+        fi
+    fi
 
     for (( i=0; i<n_instances; i++ )); do
-        local cuda_devs port pid
-        cuda_devs="$(IFS=','; echo "${all_devices[*]:$(( i * tp_size )):$tp_size}")"
+        local cuda_devs port pid mem_fraction_for_instance=""
+        cuda_devs="${instance_cuda_devs[$i]}"
         port="${ports[$i]}"
-        start_one "$model" "$cuda_devs" "$tp_size" "$port" "$embedding" \
+
+        if [[ "$embedding" == "true" ]] && ! $has_mem_fraction_arg && $can_auto_mem; then
+            local smi_out
+            if smi_out="$(nvidia-smi --query-gpu=index,memory.total,memory.free --format=csv,noheader,nounits 2>/dev/null)"; then
+                declare -A gpu_total_mb=()
+                declare -A gpu_free_mb=()
+                while IFS=',' read -r gpu_idx total_mb free_mb; do
+                    gpu_idx="${gpu_idx//[[:space:]]/}"
+                    total_mb="${total_mb//[[:space:]]/}"
+                    free_mb="${free_mb//[[:space:]]/}"
+                    [[ -z "$gpu_idx" ]] && continue
+                    gpu_total_mb["$gpu_idx"]="$total_mb"
+                    gpu_free_mb["$gpu_idx"]="$free_mb"
+                done <<< "$smi_out"
+
+                local computed_fraction=""
+                local auto_ok=true
+                local calc_notes=()
+                IFS=',' read -ra launch_devs <<< "$cuda_devs"
+                for dev in "${launch_devs[@]}"; do
+                    local total_mb="${gpu_total_mb[$dev]:-0}"
+                    local free_mb="${gpu_free_mb[$dev]:-0}"
+                    local launches_left="${remaining_uses[$dev]:-0}"
+                    if (( total_mb <= 0 || free_mb <= 0 || launches_left <= 0 )); then
+                        auto_ok=false
+                        break
+                    fi
+                    local usable_mb=$(( free_mb - auto_mem_headroom_mb ))
+                    (( usable_mb < 256 )) && usable_mb=256
+                    local per_launch_mb=$(( usable_mb / launches_left ))
+                    local frac
+                    frac="$(awk -v b="$per_launch_mb" -v t="$total_mb" -v min="$auto_mem_min_fraction" -v max="$auto_mem_max_fraction" \
+                        'BEGIN { f=b/t; if (f<min) f=min; if (f>max) f=max; printf "%.3f", f }')"
+                    if [[ -z "$computed_fraction" ]]; then
+                        computed_fraction="$frac"
+                    else
+                        computed_fraction="$(awk -v a="$computed_fraction" -v b="$frac" 'BEGIN { if (a < b) printf "%.3f", a; else printf "%.3f", b }')"
+                    fi
+                    calc_notes+=("gpu$dev free=${free_mb}MiB left=$launches_left")
+                done
+
+                if $auto_ok && [[ -n "$computed_fraction" ]]; then
+                    mem_fraction_for_instance="$computed_fraction"
+                    echo "  [port $port] Auto mem fraction=${mem_fraction_for_instance} (${calc_notes[*]})"
+                else
+                    if ! $auto_mem_warning_emitted; then
+                        echo "  [port $port] Warning: auto mem fraction failed; using sglang default."
+                        auto_mem_warning_emitted=true
+                    fi
+                    can_auto_mem=false
+                fi
+            else
+                if ! $auto_mem_warning_emitted; then
+                    echo "  [port $port] Warning: nvidia-smi query failed; using sglang default."
+                    auto_mem_warning_emitted=true
+                fi
+                can_auto_mem=false
+            fi
+        fi
+
+        start_one "$model" "$cuda_devs" "$tp_size" "$port" "$embedding" "$mem_fraction_for_instance" \
                   "${extra_args[@]+"${extra_args[@]}"}"
         pid="$(cat "$(model_to_pid_file "$model" "$port")")"
         pids+=("$pid")
+
+        IFS=',' read -ra used_devs <<< "$cuda_devs"
+        for dev in "${used_devs[@]}"; do
+            remaining_uses["$dev"]=$(( ${remaining_uses["$dev"]:-1} - 1 ))
+        done
 
         # When sharing a GPU, wait for this instance to be ready before starting the next
         # so that memory profiling sees accurate free VRAM.

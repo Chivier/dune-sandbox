@@ -52,6 +52,7 @@ Start and stop any HuggingFace model.
 | `--model` | HuggingFace model ID (required for start) |
 | `--device` | Comma-separated GPU IDs. Count / port-count = tp_size. Default: `$CUDA_VISIBLE_DEVICES` or `0` |
 | `--port` | Comma-separated ports. Count determines number of instances. Default: `30000` |
+| `--mem-fraction-static` | Forwarded to sglang. If omitted in embedding mode, `sglang.sh` auto-computes it per instance from live `nvidia-smi` free VRAM and remaining launches per GPU (tunable with `SGLANG_AUTO_MEM_HEADROOM_MB`, `SGLANG_AUTO_MEM_MIN_FRACTION`, `SGLANG_AUTO_MEM_MAX_FRACTION`). |
 | `--no-embedding` | Skip `--is-embedding` (use for generative/chat models) |
 | `--all` | (stop) Stop all running sglang servers |
 

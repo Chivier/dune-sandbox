@@ -9,6 +9,12 @@ uv venv --python 3.11
 uv pip install "sglang[all]"
 ```
 
+If you run into DeBERTa import errors on Linux:
+
+```bash
+./scripts/install_deberta_linux.sh
+```
+
 ## Scripts
 
 Three scripts are provided in `scripts/`. All use the same underlying `sglang.sh` and store PID files in `/tmp/sglang_pids/`. Logs go to `/tmp/sglang_<port>.log`.
